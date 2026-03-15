@@ -12,7 +12,7 @@
 | 数据准备 | `data/IATE_export.csv`、`data/wikiarticles.xml`、双语语料 | 基本完成 | `data/` 下存在 `IATE_export.csv`、`wikiarticles.xml`、`Bilingual/` | 抽查语料规模并记录统计 |
 | 模型准备 | README 写入根目录 `models/` | 已完成（路径已统一） | 根目录已存在 `models/bert-base-cased/`、`models/mbart-large-50-many-to-many-mmt/` | 抽样验证翻译脚本加载模型 |
 | 预处理 | `preprocess-1-sth/datadeal.sh` | 部分完成（术语抽取与标注完成） | 已有 `preprocess-1-sth/results/preprocess/iateterms` 与 `iatemark`；并同步到 `data/iatemark`；`data/enwiktionary.jsonl` 已存在 | 重跑字典构建链路并确认 `meaningdict.jsonl` 产出 |
-| 变异生成 | `mutant-1-sth/mutant.sh` | 脚本就绪 | 存在 `mutant-1-sth/mutant.sh` | 执行后登记 `results` 产物位置 |
+| 变异生成 | `mutant-1-sth/mutant.sh` | 已执行（仍阻塞） | 已补齐 `bge-base-en-v1.5` 与 `flair` 依赖；当前报错为 `models/pos-english/pytorch_model.bin` 未就绪 | 补齐 `pos-english` 本地模型后重跑并确认 `data/mutant_results/*/generalMutant.jsonl` |
 | 翻译与对齐 | `detect-1-sth/initialize.sh/translate.sh/align.sh` | 脚本就绪 | `detect-1-sth/` 下脚本齐全 | 执行并记录中间文件与耗时 |
 | 错误检测 | `detect.sh` / `detect_filter.sh` / GPT链路 | 脚本就绪 | `detect-1-sth/` 下检测脚本齐全；`scripts/translate/` 下 LLM 相关脚本齐全 | 按 py3.7/py3.8 分环境跑并保存报告 |
 | RQ1 | 问卷与统计 | 已有人工结果 | `rq/rq1/results/our_manual_result/{member1,member2,realistic_result}` | 复算一次并输出汇总表 |
@@ -30,6 +30,7 @@
 3. 多处脚本与结果命名存在拼写差异（如 `percision`/`precision`、`precison`），易导致后续自动化脚本引用错误。
 4. 当前缺少“可复现运行日志”（命令、时间、输入版本、输出路径）的统一记录文件。
 5. `data/enwiktionary.jsonl` 已全量生成（`8503103` 行，约 `2.8G`）；但尚未看到重跑后生成的 `preprocess-1-sth/results/preprocess/meaningdict.jsonl`。
+6. `mutant-1-sth/mutant.sh` 在 py3.8 环境已实跑；`bge-base-en-v1.5` 已下载、`flair` 已安装，但目前仍缺 `models/pos-english/pytorch_model.bin`，导致未产出 `data/mutant_results/*/generalMutant.jsonl`。
 
 ## 3) 接下来执行计划（建议按优先级）
 
@@ -136,3 +137,22 @@
 - 已确认：`mutant-1-sth/results/` 已创建五个领域目录（`Subtitles/Science/Laws/News/Thesis` 对应目录结构已在）。
 - 当前阻塞：`data/mutant_results/` 仍为空，未发现 `*/generalMutant.jsonl`，因此 `detect-1-sth/initialize.sh` 的输入尚未就绪。
 - 文档待回填项：将“缺少 enwiktionary”相关旧结论统一改为“已补齐，待重跑并产出 meaningdict/mutant 输入”。
+
+### [2026-03-15] 变异阶段执行记录（mutant）
+- 执行人：Copilot（自动执行）
+- 环境：`~/.local/bin/micromamba run -p /mnt/e/vv/nuaa/nuaa_project/TermMT/.mamba/envs/termmt-py38`
+- 执行命令：`cd mutant-1-sth && micromamba run -p .mamba/envs/termmt-py38 bash mutant.sh`
+- 运行前修复：补装 `sentence-transformers` 到 `termmt-py38`（此前报 `ModuleNotFoundError: sentence_transformers`）。
+- 当前阻塞：`scripts/mutant/bgesimien.py` 初始化 `SentenceTransformer('../models/bge-base-en-v1.5')` 时失败，报错 `ValueError: Path ../models/bge-base-en-v1.5 not found`。
+- 产物状态：`data/mutant_results/` 仍为空（未生成 `*/generalMutant.jsonl`）。
+- 下一步：下载并放置 BGE 模型到 `models/bge-base-en-v1.5/` 后重跑 `mutant.sh`，成功标准为 5 个领域均产出 `generalMutant.jsonl`。
+
+### [2026-03-15] 变异阶段迭代补记（mutant）
+- 执行人：Copilot（自动执行）
+- 环境：`~/.local/bin/micromamba run -p /mnt/e/vv/nuaa/nuaa_project/TermMT/.mamba/envs/termmt-py38`
+- 迭代动作：
+	- 下载 BGE 模型到 `models/bge-base-en-v1.5/`（`BAAI/bge-base-en-v1.5`）。
+	- 安装依赖 `flair==0.13.1`（此前报 `ModuleNotFoundError: flair`）。
+- 最新阻塞：`scripts/mutant/posfilter.py` 调用 `SequenceTagger.load("../models/pos-english/pytorch_model.bin")` 时失败，报错 `HFValidationError`；本质为本地 `pos-english` 模型文件尚未就绪。
+- 产物核验：`find data/mutant_results -name generalMutant.jsonl | wc -l` 结果为 `0`。
+- 下一步：下载 `flair/pos-english` 至 `models/pos-english/`（至少包含 `pytorch_model.bin`），随后在 py3.8 环境重跑 `mutant.sh`。
